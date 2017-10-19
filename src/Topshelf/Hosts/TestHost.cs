@@ -61,6 +61,8 @@ namespace Topshelf.Hosts
             }
             catch (Exception ex)
             {
+                _settings.ExceptionCallback?.Invoke(ex);
+
                 _log.Error("The service threw an exception during testing.", ex);
             }
             finally
@@ -80,6 +82,11 @@ namespace Topshelf.Hosts
         void HostControl.Stop()
         {
             _log.Info("Service Stop requested, exiting.");
+        }
+
+        void HostControl.Stop(TopshelfExitCode exitCode)
+        {
+            _log.Info($"Service Stop requested with exit code {exitCode}, exiting.");
         }
 
         void HostControl.Restart()

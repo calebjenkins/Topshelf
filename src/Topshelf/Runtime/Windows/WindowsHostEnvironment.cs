@@ -22,11 +22,18 @@ namespace Topshelf.Runtime.Windows
     using System.Security.Principal;
     using System.ServiceProcess;
     using Logging;
+    using HostConfigurators;
 
     public class WindowsHostEnvironment :
         HostEnvironment
     {
         readonly LogWriter _log = HostLogger.Get(typeof(WindowsHostEnvironment));
+        private HostConfigurator _hostConfigurator;
+
+        public WindowsHostEnvironment(HostConfigurator configurator)
+        {
+            _hostConfigurator = configurator;
+        }
 
         public bool IsServiceInstalled(string serviceName)
         {
@@ -35,8 +42,7 @@ namespace Topshelf.Runtime.Windows
                 return false;
             }
             
-            return ServiceController.GetServices()
-                .Any(service => string.CompareOrdinal(service.ServiceName, serviceName) == 0);
+            return IsServiceListed(serviceName);
         }
 
         public bool IsServiceStopped(string serviceName)
@@ -181,7 +187,7 @@ namespace Topshelf.Runtime.Windows
 
         public Host CreateServiceHost(HostSettings settings, ServiceHandle serviceHandle)
         {
-            return new WindowsServiceHost(this, settings, serviceHandle);
+            return new WindowsServiceHost(this, settings, serviceHandle, this._hostConfigurator);
         }
 
         public void SendServiceCommand(string serviceName, int command)
@@ -200,14 +206,38 @@ namespace Topshelf.Runtime.Windows
             }
         }
 
-        public void InstallService(InstallHostSettings settings, Action beforeInstall, Action afterInstall, Action beforeRollback, Action afterRollback)
+        public void InstallService(InstallHostSettings settings, Action<InstallHostSettings> beforeInstall, Action afterInstall, Action beforeRollback, Action afterRollback)
         {
             using (var installer = new HostServiceInstaller(settings))
             {
                 Action<InstallEventArgs> before = x =>
                     {
                         if (beforeInstall != null)
-                            beforeInstall();
+                        {
+                            beforeInstall(settings);
+                            installer.ServiceProcessInstaller.Username = settings.Credentials.Username;
+                            installer.ServiceProcessInstaller.Account = settings.Credentials.Account;
+
+                            bool gMSA = false;
+                            // Group Managed Service Account (gMSA) workaround per
+                            // https://connect.microsoft.com/VisualStudio/feedback/details/795196/service-process-installer-should-support-virtual-service-accounts
+                            if (settings.Credentials.Account == ServiceAccount.User &&
+                                settings.Credentials.Username != null &&
+                                ((gMSA = settings.Credentials.Username.EndsWith("$", StringComparison.InvariantCulture)) ||
+                                string.Equals(settings.Credentials.Username, "NT SERVICE\\" + settings.ServiceName, StringComparison.InvariantCulture)))
+                            {
+                                _log.InfoFormat(gMSA ? "Installing as gMSA {0}." : "Installing as virtual service account", settings.Credentials.Username);
+                                installer.ServiceProcessInstaller.Password = null;
+                                installer.ServiceProcessInstaller
+                                    .GetType()
+                                    .GetField("haveLoginInfo", BindingFlags.Instance | BindingFlags.NonPublic)
+                                    .SetValue(installer.ServiceProcessInstaller, true);
+                            }
+                            else
+                            {
+                                installer.ServiceProcessInstaller.Password = settings.Credentials.Password;
+                            }
+                        }
                     };
 
                 Action<InstallEventArgs> after = x =>
@@ -290,6 +320,23 @@ namespace Topshelf.Runtime.Windows
                 _log.Error("Unable to get parent process (ignored)", ex);
             }
             return null;
+        }
+
+        bool IsServiceListed(string serviceName)
+        {
+            bool result = false;
+
+            try
+            {
+                result = ServiceController.GetServices()
+                    .Any(service => string.Equals(service.ServiceName, serviceName, StringComparison.OrdinalIgnoreCase));
+            }
+            catch (InvalidOperationException)
+            {
+                _log.Debug("Cannot access Service List due to permissions. Assuming the service is not installed.");
+            }
+
+            return result;
         }
     }
 }

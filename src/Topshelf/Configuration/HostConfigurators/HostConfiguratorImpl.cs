@@ -64,7 +64,7 @@ namespace Topshelf.HostConfigurators
                 yield return this.Failure("Name", "must be specified and not empty");
             else
             {
-                var disallowed = new[] {' ', '\t', '\r', '\n', '\\', '/'};
+                var disallowed = new[] {'\t', '\r', '\n', '\\', '/'};
                 if (_settings.Name.IndexOfAny(disallowed) >= 0)
                     yield return this.Failure("Name", "must not contain whitespace, '/', or '\\' characters");
             }
@@ -182,6 +182,11 @@ namespace Topshelf.HostConfigurators
             _commandLineOptionConfigurators.Add(configurator);
         }
 
+        public void OnException(Action<Exception> callback)
+        {
+            _settings.ExceptionCallback = callback;
+        }
+
         public Host CreateHost()
         {
             Type type = typeof(HostFactory);
@@ -189,7 +194,7 @@ namespace Topshelf.HostConfigurators
                       .InfoFormat("{0} v{1}, .NET Framework v{2}", type.Namespace, type.Assembly.GetName().Version,
                           Environment.Version);
 
-            EnvironmentBuilder environmentBuilder = _environmentBuilderFactory();
+            EnvironmentBuilder environmentBuilder = _environmentBuilderFactory(this);
 
             HostEnvironment environment = environmentBuilder.Build();
 
@@ -224,9 +229,9 @@ namespace Topshelf.HostConfigurators
             return new RunBuilder(environment, settings);
         }
 
-        static EnvironmentBuilder DefaultEnvironmentBuilderFactory()
+        static EnvironmentBuilder DefaultEnvironmentBuilderFactory(HostConfigurator configurator)
         {
-            return new WindowsHostEnvironmentBuilder();
+            return new WindowsHostEnvironmentBuilder(configurator);
         }
     }
 }

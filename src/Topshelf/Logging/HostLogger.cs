@@ -13,7 +13,6 @@
 namespace Topshelf.Logging
 {
     using System;
-    using Internals.Extensions;
 
     public static class HostLogger
     {
@@ -55,7 +54,7 @@ namespace Topshelf.Logging
             return Get(type.GetTypeName());
         }
 
-        static LogWriter Get(string name)
+        public static LogWriter Get(string name)
         {
             return Current.Get(name);
         }

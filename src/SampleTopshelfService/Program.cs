@@ -40,14 +40,22 @@ namespace SampleTopshelfService
 
                     x.EnableServiceRecovery(r =>
                         {
-                            r.RestartService(0);
-                            r.RestartService(0);
-                            r.RestartService(0);
+                            r.RestartService(3);
+                            r.RunProgram(7, "ping google.com");
+                            r.RestartComputer(5, "message");
+
+                            r.OnCrashOnly();
+                            r.SetResetPeriod(2);
                         });
 
                     x.AddCommandLineSwitch("throwonstart", v => throwOnStart = v);
                     x.AddCommandLineSwitch("throwonstop", v => throwOnStop = v);
                     x.AddCommandLineSwitch("throwunhandled", v => throwUnhandled = v);
+
+                    x.OnException((exception) =>
+                    {
+                        Console.WriteLine("Exception thrown - " + exception.Message);
+                    });
                 });
         }
 
@@ -61,7 +69,7 @@ namespace SampleTopshelfService
                         {
                             s.ConstructUsing(() => new SampleSansInterfaceService());
                             s.WhenStarted(v => v.Start());
-                            s.WhenStarted(v => v.Stop());
+                            s.WhenStopped(v => v.Stop());
                         });
                 });
         }
